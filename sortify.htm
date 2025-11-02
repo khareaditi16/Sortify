@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sortify 💜 — Pro Sorting Visualizer</title>
+  <style>
+    :root{
+      --bg1:#f8e1ff; --bg2:#e1b9ff; --fg:#3b0b43; --accent:#ba68c8; --accent-2:#9c27b0;
+      --glass: rgba(255,255,255,0.72); --muted:#6b2a72;
+      --compare:#ffd1e6; --swap:#ff9fe6; --pivot:#7dd3fc; --sorted:#7c3aed;
+      font-family:Poppins, Inter, system-ui, -apple-system, 'Segoe UI', Roboto, Arial;
+    }
+    [data-theme="dark"]{ --bg1:#0b0510; --bg2:#1e0429; --fg:#f7e6ff; --glass: rgba(255,255,255,0.04); --muted:#d9b8f0 }
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;background:linear-gradient(135deg,var(--bg1),var(--bg2));color:var(--fg);display:flex;flex-direction:column;align-items:center;padding:18px}
+    .app{width:100%;max-width:1200px}
+    header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+    h1{margin:0;font-size:26px;color:var(--accent-2)}
+    .brand{background:linear-gradient(90deg,var(--accent),var(--accent-2));padding:6px 10px;border-radius:10px;color:white;font-weight:700}
+
+    .controls{margin-top:12px;background:var(--glass);padding:12px;border-radius:12px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+    select,input[type=range],button,input[type=text]{font:inherit}
+    .btn{background:var(--accent);color:white;border:0;padding:8px 12px;border-radius:8px;cursor:pointer}
+    .btn.ghost{background:transparent;border:1px solid rgba(74,20,140,0.08);color:var(--accent-2)}
+    .btn.small{padding:6px 8px;font-size:13px}
+
+    main{display:grid;grid-template-columns:1fr 420px;gap:16px;margin-top:16px}
+    .panel{background:var(--glass);border-radius:12px;padding:14px;box-shadow:0 8px 30px rgba(0,0,0,0.06)}
+
+    .viz-wrap{display:flex;flex-direction:column;gap:12px}
+    #visualizer, #visualizer2{height:340px;border-radius:10px;background:linear-gradient(180deg,rgba(255,255,255,0.95),white);display:flex;align-items:flex-end;justify-content:flex-start;gap:4px;padding:12px;overflow:hidden}
+    .bar{flex:1 1 auto;border-radius:6px 6px 2px 2px;background:linear-gradient(180deg,#d1a1ff,#b388ff);transition:height 160ms ease,background 120ms linear;display:flex;align-items:flex-end;justify-content:center;position:relative}
+    .bar .lbl{position:absolute;top:-18px;font-size:12px;color:var(--muted);pointer-events:none}
+    .bar.compare{background:linear-gradient(90deg,var(--compare),#ffc2e9)}
+    .bar.swap{background:linear-gradient(90deg,var(--swap),#d46bff)}
+    .bar.pivot{background:linear-gradient(90deg,var(--pivot),#60a5fa)}
+    .bar.sorted{background:linear-gradient(90deg,var(--sorted),#4a148c);color:white}
+
+    .controls-row{display:flex;gap:8px;align-items:center}
+
+    aside{min-height:340px}
+    .meta{display:flex;gap:10px;align-items:center;justify-content:space-between}
+    .small{font-size:13px;color:var(--muted)}
+    .counts{display:flex;gap:8px;align-items:center}
+    .count-box{background:transparent;padding:8px;border-radius:8px;border:1px dashed rgba(74,20,140,0.08);min-width:110px;text-align:center}
+
+    .section{margin-top:12px}
+    table{width:100%;border-collapse:collapse}
+    td,th{padding:6px;text-align:left}
+    th{font-size:13px;color:var(--accent-2)}
+    .explain{font-size:13px;color:var(--muted);line-height:1.35}
+
+    .pseudocode{background:rgba(0,0,0,0.03);padding:8px;border-radius:8px;margin-top:10px;font-family:monospace;font-size:13px;max-height:200px;overflow:auto}
+    .pseudocode .line{padding:6px;border-left:3px solid transparent}
+    .pseudocode .active{background:rgba(156,39,176,0.06);border-left-color:var(--accent-2)}
+
+    .progress{height:10px;background:rgba(0,0,0,0.06);border-radius:999px;overflow:hidden;margin-top:10px}
+    .progress > i{display:block;height:100%;width:0%;background:linear-gradient(90deg,#f48fb1,#7c3aed)}
+
+    .modes{display:flex;gap:6px;flex-wrap:wrap}
+    .tooltip{position:relative}
+    .tooltip:hover::after{content:attr(data-tip);position:absolute;left:50%;transform:translateX(-50%);bottom:calc(100% + 8px);background:#222;color:#fff;padding:6px 8px;border-radius:6px;font-size:12px;white-space:nowrap}
+
+    footer{margin-top:14px;text-align:center;color:var(--muted);font-size:13px}
+
+    @media (max-width:1100px){main{grid-template-columns:1fr} aside{order:2}}
+  </style>
+</head>
+<body data-theme="light">
+  <div class="app">
+    <header>
+      <div style="display:flex;align-items:center;gap:12px">
+        <div class="brand">Sortify</div>
+        <h1>Sorting Visualizer 💜</h1>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <label class="small">Theme
+          <select id="themeSel" class="small">
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+        </label>
+        <button id="toggleRace" class="btn small">Race Mode</button>
+      </div>
+    </header>
+
+    <div class="controls panel" role="region" aria-label="controls">
+      <div class="controls-row">
+        <label><strong class="small">Algorithm</strong>
+          <select id="algorithm" class="small">
+            <option value="bubble">Bubble Sort</option>
+            <option value="selection">Selection Sort</option>
+            <option value="insertion">Insertion Sort</option>
+            <option value="merge">Merge Sort</option>
+            <option value="quick">Quick Sort</option>
+            <option value="heap">Heap Sort</option>
+            <option value="counting">Counting Sort</option>
+            <option value="radix">Radix Sort</option>
+          </select>
+        </label>
+
+        <label class="small">Mode
+          <select id="genMode" class="small">
+            <option value="random">Random</option>
+            <option value="reversed">Reversed</option>
+            <option value="nearly">Nearly Sorted</option>
+            <option value="few">Few Unique</option>
+            <option value="custom">Custom</option>
+          </select>
+        </label>
+
+        <input id="customInput" type="text" placeholder="e.g. 5,2,9,10" style="width:220px" />
+
+        <label class="small">Size <input id="size" type="range" min="6" max="80" value="30"></label>
+        <label class="small">Speed <input id="speed" type="range" min="20" max="800" value="220"></label>
+
+        <div class="modes">
+          <button id="shuffle" class="btn small">Generate</button>
+          <button id="play" class="btn small">Play ▶</button>
+          <button id="stepBtn" class="btn small ghost">Step</button>
+          <button id="pauseBtn" class="btn small ghost">Pause</button>
+          <button id="resetBtn" class="btn small ghost">Reset</button>
+        </div>
+      </div>
+
+      <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+        <div class="counts">
+          <div class="count-box"><div class="small">Comparisons</div><div id="comp" style="font-weight:700">0</div></div>
+          <div class="count-box"><div class="small">Swaps/Writes</div><div id="sw" style="font-weight:700">0</div></div>
+          <div class="count-box"><div class="small">Time (ms)</div><div id="time" style="font-weight:700">0</div></div>
+        </div>
+      </div>
+    </div>
+
+    <main>
+      <section class="panel viz-wrap">
+        <div id="visualizer" aria-live="polite"></div>
+        <div class="progress" aria-hidden><i id="progbar"></i></div>
+        <div id="status" class="small">Status: Idle</div>
+
+        <!-- Race second visualizer (hidden unless race toggled) -->
+        <div id="raceArea" style="display:none">
+          <hr />
+          <div style="display:flex;gap:8px;align-items:center;justify-content:space-between"><div class="small">Race: <span id="raceAlgo">---</span></div><div class="small">Status: <span id="raceStatus">Idle</span></div></div>
+          <div id="visualizer2" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <aside class="panel">
+        <div class="meta">
+          <div>
+            <div class="small">Algorithm</div>
+            <div id="algoName" style="font-weight:700;margin-top:6px">Bubble Sort</div>
+          </div>
+          <div class="small">Array size: <span id="sizeVal">30</span></div>
+        </div>
+
+        <div class="section">
+          <div class="small">Complexity</div>
+          <table id="complexityTable">
+            <tr><th>Case</th><th>Time</th></tr>
+            <tr><td>Best</td><td id="best">-</td></tr>
+            <tr><td>Average</td><td id="avg">-</td></tr>
+            <tr><td>Worst</td><td id="worst">-</td></tr>
+            <tr><td>Space</td><td id="space">-</td></tr>
+          </table>
+        </div>
+
+        <div class="section">
+          <div class="small">About</div>
+          <div id="explain" class="explain">Select algorithm to view explanation and pseudocode. Pseudocode line will highlight as algorithm runs.</div>
+        </div>
+
+        <div class="section">
+          <div class="small">Pseudocode</div>
+          <div id="pseudocode" class="pseudocode"></div>
+        </div>
+      </aside>
+    </main>
+
+    <footer>Made with 💜 — labels appear above bars, tooltips on hover, and race mode to compare two algorithms.</footer>
+  </div>
+
+  <script>
+    // Elements
+    const body = document.body;
+    const visualizer = document.getElementById('visualizer');
+    const visualizer2 = document.getElementById('visualizer2');
+    const algorithm = document.getElementById('algorithm');
+    const sizeRange = document.getElementById('size');
+    const speedRange = document.getElementById('speed');
+    const shuffleBtn = document.getElementById('shuffle');
+    const playBtn = document.getElementById('play');
+    const stepBtn = document.getElementById('stepBtn');
+    const pauseBtn = document.getElementById('pauseBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const genMode = document.getElementById('genMode');
+    const customInput = document.getElementById('customInput');
+    const compEl = document.getElementById('comp');
+    const swEl = document.getElementById('sw');
+    const timeEl = document.getElementById('time');
+    const progbar = document.getElementById('progbar');
+    const statusEl = document.getElementById('status');
+    const algoName = document.getElementById('algoName');
+    const explain = document.getElementById('explain');
+    const bestEl = document.getElementById('best');
+    const avgEl = document.getElementById('avg');
+    const worstEl = document.getElementById('worst');
+    const spaceEl = document.getElementById('space');
+    const pseudocodeEl = document.getElementById('pseudocode');
+    const sizeVal = document.getElementById('sizeVal');
+    const themeSel = document.getElementById('themeSel');
+    const toggleRace = document.getElementById('toggleRace');
+    const raceArea = document.getElementById('raceArea');
+    const raceAlgo = document.getElementById('raceAlgo');
+    const raceStatus = document.getElementById('raceStatus');
+
+    // State
+    let arr = [];
+    let bars = [];
+    let ops = []; // recorded ops for main viz
+    let opIndex = 0;
+    let comparisons = 0, writes = 0;
+    let playing = false, paused = false;
+    let startTime = 0;
+
+    // Race state
+    let raceOn = false;
+    let arr2 = [], ops2 = [], opIndex2 = 0, bars2 = [], comparisons2=0, writes2=0, playing2=false;
+
+    // Algorithms metadata and pseudocode lines
+    const ALGOS = {
+      bubble: { name:'Bubble Sort', best:'O(n)',avg:'O(n²)',worst:'O(n²)',space:'O(1)', desc:'Repeatedly compare adjacent items and swap if out of order. Simple but slow for big arrays.', pseudocode:[
+          'for i from 0 to n-1', '  for j from 0 to n-2-i', '    if a[j] > a[j+1]', '      swap a[j], a[j+1]']},
+      selection:{ name:'Selection Sort', best:'O(n²)',avg:'O(n²)',worst:'O(n²)',space:'O(1)', desc:'Select the smallest element and move it to the front. Minimizes writes.', pseudocode:[ 'for i from 0 to n-1', '  min = i', '  for j from i+1 to n-1', '    if a[j] < a[min]', '      min = j', '  swap a[i], a[min]' ]},
+      insertion:{ name:'Insertion Sort', best:'O(n)',avg:'O(n²)',worst:'O(n²)',space:'O(1)', desc:'Build a sorted section by inserting each element into its correct position. Efficient for small/nearly-sorted arrays.', pseudocode:[ 'for i from 1 to n-1', '  key = a[i]', '  j = i-1', '  while j>=0 and a[j] > key', '    a[j+1] = a[j]', '    j--', '  a[j+1] = key' ]},
+      merge:{ name:'Merge Sort', best:'O(n log n)',avg:'O(n log n)',worst:'O(n log n)',space:'O(n)', desc:'Divide array, sort halves, and merge. Stable and fast; uses extra space.', pseudocode:[ 'function mergesort(l,r)', '  if l>=r return', '  m=(l+r)//2', '  mergesort(l,m)', '  mergesort(m+1,r)', '  merge two halves' ]},
+      quick:{ name:'Quick Sort', best:'O(n log n)',avg:'O(n log n)',worst:'O(n²)',space:'O(log n)', desc:'Choose pivot, partition array, recursively sort partitions. Fast in practice.', pseudocode:[ 'function quick(l,r)', '  if l>=r return', '  p = partition(l,r)', '  quick(l,p-1)', '  quick(p+1,r)' ]},
+      heap:{ name:'Heap Sort', best:'O(n log n)',avg:'O(n log n)',worst:'O(n log n)',space:'O(1)', desc:'Build a heap and repeatedly extract the max to the end.', pseudocode:[ 'build max-heap', 'for i from n-1 downto 1', '  swap a[0], a[i]', '  heapify(0, i-1)' ]},
+      counting:{ name:'Counting Sort', best:'O(n+k)',avg:'O(n+k)',worst:'O(n+k)',space:'O(n+k)', desc:'Count occurrences of each value and rebuild array. Works with integers in small range.', pseudocode:[ 'count array C of size k', 'for each value v in a: C[v]++', 'prefix-sum C', 'for i from n-1 downto 0: place a[i] by C[a[i]]--' ]},
+      radix:{ name:'Radix Sort', best:'O(nk)',avg:'O(nk)',worst:'O(nk)',space:'O(n+k)', desc:'Sort by individual digits using stable sort (counting) on each digit.', pseudocode:[ 'for d from least-significant to most', '  stable-sort array by digit d' ]}
+    };
+
+    // Helpers
+    function resetCounters(){ comparisons=0; writes=0; compEl.textContent='0'; swEl.textContent='0'; timeEl.textContent='0'; progbar.style.width='0%'; }
+    function setSizeText(){ sizeVal.textContent = arr.length }
+
+    // Generate array based on mode
+    function generate(){
+      const mode = genMode.value; const n = parseInt(sizeRange.value,10);
+      if(mode==='custom' && customInput.value.trim()){ const vals = customInput.value.split(',').map(x=>parseInt(x.trim(),10)).filter(x=>!isNaN(x)); arr = vals.slice(); }
+      else if(mode==='reversed'){ arr = Array.from({length:n}, (_,i)=> (n-i)*10); }
+      else if(mode==='nearly'){ arr = Array.from({length:n}, (_,i)=> i*10); // nearly sorted
+        // shuffle a few
+        for(let k=0;k<Math.max(1,Math.floor(n*0.06));k++){ const i=Math.floor(Math.random()*n), j=Math.floor(Math.random()*n); [arr[i],arr[j]]=[arr[j],arr[i]]; }
+      }
+      else if(mode==='few'){ const uniq = Math.max(2, Math.floor(n/6)); arr = Array.from({length:n}, ()=> Math.floor(Math.random()*uniq)*10); }
+      else { arr = Array.from({length:n}, ()=> Math.floor(Math.random()*400)+10); }
+      render(); resetCounters(); ops=[]; opIndex=0; playing=false; startTime=0; statusEl.textContent='Idle';
+      // hide race if on
+      if(raceOn) setupRace();
+    }
+
+    function render(){ visualizer.innerHTML=''; bars=[]; const max = Math.max(...arr,1);
+      arr.forEach((v,i)=>{ const bar=document.createElement('div'); bar.className='bar'; bar.style.height=(v/max*100)+'%'; bar.style.flexBasis = Math.max(6, Math.floor(900/arr.length))+'px'; const lbl=document.createElement('div'); lbl.className='lbl'; lbl.textContent=v; bar.appendChild(lbl); visualizer.appendChild(bar); bars.push(bar); }); setSizeText(); }
+
+    // Utility to push ops
+    function push(op){ ops.push(op); }
+
+    // Apply op (visual)
+    function apply(op, target=1){ // target 1 or 2 (race)
+      const {type,i,j,value} = op;
+      const targetBars = (target===1? bars : bars2);
+      if(type==='compare'){ if(target===1){ comparisons++; compEl.textContent=comparisons; } else { comparisons2++; } targetBars[i]?.classList.add('compare'); targetBars[j]?.classList.add('compare'); }
+      else if(type==='swap'){ if(target===1){ writes++; swEl.textContent=writes; } else { writes2++; } targetBars[i]?.classList.add('swap'); targetBars[j]?.classList.add('swap'); const hi=targetBars[i].style.height; const ti = targetBars[i].querySelector('.lbl').textContent; targetBars[i].style.height=targetBars[j].style.height; targetBars[i].querySelector('.lbl').textContent = targetBars[j].querySelector('.lbl').textContent; targetBars[j].style.height=hi; targetBars[j].querySelector('.lbl').textContent = ti; }
+      else if(type==='overwrite'){ if(target===1){ writes++; swEl.textContent=writes; } targetBars[i]?.classList.add('swap'); targetBars[i].style.height=value.h; targetBars[i].querySelector('.lbl').textContent = value.v; }
+      else if(type==='mark'){ targetBars[i]?.classList.add('sorted'); }
+      else if(type==='pivot'){ targetBars[i]?.classList.add('pivot'); }
+    }
+
+    function clearHighlights(target=1){ const targetBars = (target===1? bars : bars2); targetBars.forEach(b=> b.classList.remove('compare','swap','pivot')); }
+
+    // Build ops for algorithms (record-only)
+    function buildOpsFor(arrSrc, which=1){ // which for debugging, not really used here
+      const a = arrSrc.slice(); const n=a.length; const opsLocal = [];
+      const COMP = (i,j)=> opsLocal.push({type:'compare',i,j});
+      const SWP = (i,j)=>{ opsLocal.push({type:'swap',i,j}); [a[i],a[j]]=[a[j],a[i]] };
+      const OVER = (i,v)=>{ opsLocal.push({type:'overwrite', i, value:{h: (v/Math.max(...arr))*100+'%', v}}); a[i]=v };
+      const MARK = i=> opsLocal.push({type:'mark',i});
+      const PIV = i=> opsLocal.push({type:'pivot',i});
+
+      const algo = algorithm.value;
+      if(algo==='bubble'){
+        for(let i=0;i<n-1;i++){
+          for(let j=0;j<n-1-i;j++){ COMP(j,j+1); if(a[j]>a[j+1]) SWP(j,j+1); }
+          MARK(n-1-i);
+        }
+        MARK(0);
+      }
+      else if(algo==='selection'){
+        for(let i=0;i<n;i++){ let min=i; for(let j=i+1;j<n;j++){ COMP(min,j); if(a[j]<a[min]) min=j } if(min!==i) SWP(i,min); MARK(i); }
+      }
+      else if(algo==='insertion'){
+        for(let i=1;i<n;i++){ let key=a[i]; let j=i-1; while(j>=0){ COMP(j,i); if(a[j]>key){ OVER(j+1,a[j]); j--; } else break } OVER(j+1,key); }
+        for(let i=0;i<n;i++) MARK(i);
+      }
+      else if(algo==='merge'){
+        function mergeSort(l,r){ if(l>=r) return; const m=Math.floor((l+r)/2); mergeSort(l,m); mergeSort(m+1,r); const left=a.slice(l,m+1), right=a.slice(m+1,r+1); let i=0,j=0,k=l; while(i<left.length&&j<right.length){ COMP(l+i,m+1+j); if(left[i]<=right[j]){ OVER(k,left[i]); k++; i++; } else { OVER(k,right[j]); k++; j++; } } while(i<left.length){ OVER(k,left[i]); k++; i++; } while(j<right.length){ OVER(k,right[j]); k++; j++; } }
+        mergeSort(0,n-1); for(let i=0;i<n;i++) MARK(i);
+      }
+      else if(algo==='quick'){
+        function quick(l,r){ if(l>=r) return; const p=a[r]; PIV(r); let i=l; for(let j=l;j<r;j++){ COMP(j,r); if(a[j]<p){ SWP(i,j); i++; } } SWP(i,r); quick(l,i-1); quick(i+1,r); }
+        quick(0,n-1); for(let i=0;i<n;i++) MARK(i);
+      }
+      else if(algo==='heap'){
+        function heapify(n, i){ let largest=i; const l=2*i+1, r=2*i+2; if(l<n){ COMP(l,largest); if(a[l]>a[largest]) largest=l } if(r<n){ COMP(r,largest); if(a[r]>a[largest]) largest=r } if(largest!==i){ SWP(i,largest); heapify(n,largest); } }
+        for(let i=Math.floor(n/2)-1;i>=0;i--) heapify(n,i);
+        for(let i=n-1;i>0;i--){ SWP(0,i); heapify(i,0); MARK(i); } MARK(0);
+      }
+      else if(algo==='counting'){
+        const maxv = Math.max(...a); const minv = Math.min(...a); const range = maxv - minv + 1; const C = new Array(range).fill(0); for(let i=0;i<n;i++){ C[a[i]-minv]++; }
+        for(let i=1;i<C.length;i++){ C[i]+=C[i-1]; }
+        const output = new Array(n);
+        for(let i=n-1;i>=0;i--){ const v=a[i]; const idx = --C[v-minv]; output[idx]=v; }
+        for(let i=0;i<n;i++){ OVER(i, output[i]); }
+        for(let i=0;i<n;i++) MARK(i);
+      }
+      else if(algo==='radix'){
+        // simple LSD radix base 10 using counting as stable sort
+        let maxv = Math.max(...a); let exp=1; while(Math.floor(maxv/exp)>0){ const output=new Array(n).fill(0); const cnt=new Array(10).fill(0); for(let i=0;i<n;i++){ cnt[Math.floor((a[i]/exp)%10)]++; } for(let i=1;i<10;i++) cnt[i]+=cnt[i-1]; for(let i=n-1;i>=0;i--){ const d=Math.floor((a[i]/exp)%10); output[--cnt[d]]=a[i]; } for(let i=0;i<n;i++){ OVER(i, output[i]); } exp*=10; }
+        for(let i=0;i<n;i++) MARK(i);
+      }
+
+      return opsLocal;
+    }
+
+    // Play / run operations
+    function run(){ if(ops.length===0) ops = buildOpsFor(arr,1); if(opIndex>=ops.length){ statusEl.textContent='Done'; return; } playing=true; paused=false; playBtn.textContent='Pause ❚❚'; statusEl.textContent='Running'; startTime = performance.now(); runStep(); }
+
+    function runStep(){ if(opIndex>=ops.length){ playing=false; playBtn.textContent='Play ▶'; statusEl.textContent='Done'; timeEl.textContent = Math.round(performance.now()-startTime); progbar.style.width='100%'; return; }
+      const delay = Math.max(10, parseInt(speedRange.value,10)); const op = ops[opIndex++]; apply(op,1); const perc = Math.round(opIndex/ops.length*100); progbar.style.width = perc+'%';
+      setTimeout(()=>{ clearHighlights(1); if(!paused) runStep(); else { playing=false; playBtn.textContent='Play ▶'; statusEl.textContent='Paused'; timeEl.textContent = Math.round(performance.now()-startTime); } }, Math.min(200, delay));
+    }
+
+    function doStep(){ if(ops.length===0) ops = buildOpsFor(arr,1); if(opIndex<ops.length){ const op = ops[opIndex++]; apply(op,1); setTimeout(()=>clearHighlights(1), Math.min(200, parseInt(speedRange.value,10))); progbar.style.width = Math.round(opIndex/ops.length*100)+'%'; } if(opIndex>=ops.length) statusEl.textContent='Done'; }
+
+    function pause(){ paused=true; playing=false; playBtn.textContent='Play ▶'; statusEl.textContent='Paused'; }
+    function resetAll(){ generate(); ops=[]; opIndex=0; progbar.style.width='0%'; statusEl.textContent='Idle'; }
+
+    // Race setup
+    function setupRace(){ raceOn = !raceOn; if(raceOn){ raceArea.style.display='block'; toggleRace.textContent='Stop Race'; raceAlgo.textContent = algorithm.value; // build second arr copy and ops for quick (choose different algos maybe)
+        arr2 = arr.slice(); render2(); ops2 = buildOpsFor(arr2,2); opIndex2=0; comparisons2=0; writes2=0; raceStatus.textContent='Ready'; } else { raceArea.style.display='none'; toggleRace.textContent='Race Mode'; raceAlgo.textContent='---'; }
+    }
+
+    function render2(){ visualizer2.innerHTML=''; bars2=[]; const max = Math.max(...arr2,1); arr2.forEach((v,i)=>{ const bar=document.createElement('div'); bar.className='bar'; bar.style.height=(v/max*100)+'%'; bar.style.flexBasis = Math.max(6, Math.floor(900/arr2.length))+'px'; const lbl=document.createElement('div'); lbl.className='lbl'; lbl.textContent=v; bar.appendChild(lbl); visualizer2.appendChild(bar); bars2.push(bar); }); }
+
+    // Theme
+    themeSel.addEventListener('change', ()=>{ body.setAttribute('data-theme', themeSel.value); });
+
+    // Wiring
+    shuffleBtn.addEventListener('click', ()=> generate());
+    playBtn.addEventListener('click', ()=>{ if(!playing) run(); else { paused=true; playing=false; playBtn.textContent='Play ▶'; statusEl.textContent='Paused'; } });
+    stepBtn.addEventListener('click', ()=> doStep());
+    pauseBtn.addEventListener('click', ()=> pause());
+    resetBtn.addEventListener('click', ()=> resetAll());
+    sizeRange.addEventListener('input', ()=> generate());
+    algorithm.addEventListener('change', ()=>{ const a = algorithm.value; algoName.textContent = ALGOS[a].name; bestEl.textContent = ALGOS[a].best; avgEl.textContent = ALGOS[a].avg; worstEl.textContent = ALGOS[a].worst; spaceEl.textContent = ALGOS[a].space; explain.textContent = ALGOS[a].desc; // render pseudocode
+      const code = ALGOS[a].pseudocode.map((ln,i)=> `<div class="line" data-line="${i}">${ln}</div>`).join(''); pseudocodeEl.innerHTML = code; ops=[]; opIndex=0; resetCounters(); statusEl.textContent='Idle'; });
+
+    toggleRace.addEventListener('click', ()=> setupRace());
+
+    // keyboard
+    window.addEventListener('keydown',(e)=>{ if(e.code==='Space'){ e.preventDefault(); if(!playing) run(); else { paused=true; playing=false; playBtn.textContent='Play ▶'; } } if(e.key==='ArrowRight') doStep(); if(e.key==='r') generate(); });
+
+    // init
+    generate(); algorithm.dispatchEvent(new Event('change'));
+  </script>
+</body>
+</html>
